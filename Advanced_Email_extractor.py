@@ -193,7 +193,7 @@ def full_extraction(emails, sender_email, folder_path, progress_queue):
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Emails from {}</title>
+        <title>Emails from {0}</title>
         <style>
             .email-container {{ border: 1px solid #ccc; margin: 10px; padding: 10px; }}
             .email-list {{ display: none; }}
@@ -207,17 +207,31 @@ def full_extraction(emails, sender_email, folder_path, progress_queue):
         </script>
     </head>
     <body>
-        <h1>Emails from {}</h1>
+        <h1>Emails from {0}</h1>
         <div id="calendar">
             <h2>Select Date:</h2>
-            {}
+            {1}
         </div>
-        {}
+        {2}
     </body>
     </html>
-    """.format(sender_email, sender_email,
-               ''.join(f'<button onclick="showEmails(\'{date}\')">{date}</button>' for date in sorted(emails_by_date.keys())),
-               ''.join(f'<div id="emails-{date}" class="email-list">{"".join(f"<div class=\"email-container\"><h3>{e["subject"]}</h3><p>{e["html_body"] or e["body"]}</p>{"".join(f"<p>Attachment: <a href=\"{a["path"]}\" download>{a["filename"]}</a></p>" for a in e["attachments"])}</div>" for e in sorted(emails_by_date[date], key=lambda x: x["date"], reverse=True))}</div>' for date in sorted(emails_by_date.keys())))
+    """.format(
+        sender_email,
+        ''.join(f'<button onclick="showEmails(\'{date}\')">{date}</button>' for date in sorted(emails_by_date.keys())),
+        ''.join([
+            f'<div id="emails-{date}" class="email-list">' +
+            ''.join([
+                '<div class="email-container">' +
+                f'<h3>{e["subject"]}</h3>' +
+                f'<p>{e["html_body"] or e["body"]}</p>' +
+                ''.join(f'<p>Attachment: <a href="{a["path"]}" download>{a["filename"]}</a></p>' for a in e["attachments"]) +
+                '</div>'
+                for e in sorted(emails_by_date[date], key=lambda x: x["date"], reverse=True)
+            ]) +
+            '</div>'
+            for date in sorted(emails_by_date.keys())
+        ])
+    )
     
     with open(os.path.join(folder_path, 'emails.html'), 'w', encoding='utf-8') as f:
         f.write(html_content)
