@@ -2,3 +2,4 @@ env
 credentials.json
 token.json
 sender.txt
+emails_from_*
