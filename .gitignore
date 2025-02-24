@@ -3,3 +3,6 @@ credentials.json
 token.json
 sender.txt
 emails_from_*
+__pycache__
+gmail_bot.log
+config.json
