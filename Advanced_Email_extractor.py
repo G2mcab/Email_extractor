@@ -173,9 +173,18 @@ def full_extraction(emails, sender_email, folder_path, progress_queue):
     emails_by_date = {}
     for i, email in enumerate(emails, 1):
         try:
-            date_key = datetime.strptime(email['date'], '%a, %d %b %Y %H:%M:%S %z').strftime('%Y-%m-%d')
+            # Parse the date and standardize to YYYY-MM-DD
+            date_obj = datetime.strptime(email['date'], '%a, %d %b %Y %H:%M:%S %z')
+            date_key = date_obj.strftime('%Y-%m-%d')
         except ValueError:
-            date_key = email['date'].split(' ')[0]  # Fallback if date parsing fails
+            # Fallback: Extract date from string if format is unexpected
+            date_parts = email['date'].split()
+            if len(date_parts) >= 4:
+                date_str = f"{date_parts[3]}-{datetime.strptime(date_parts[2], '%b').month:02d}-{int(date_parts[1]):02d}"
+                date_key = date_str
+            else:
+                date_key = '1970-01-01'  # Default if parsing completely fails
+        
         if date_key not in emails_by_date:
             emails_by_date[date_key] = []
         emails_by_date[date_key].append(email)
@@ -188,36 +197,90 @@ def full_extraction(emails, sender_email, folder_path, progress_queue):
         
         progress_queue.put(('progress', 50 + (i / total * 30), f"Processing attachments {i}/{total}"))
     
-    # HTML with JS Calendar
+    # Determine the month to display (earliest email month)
+    if emails_by_date:
+        earliest_date = min(emails_by_date.keys())  # Already in YYYY-MM-DD format
+        year, month = map(int, earliest_date.split('-')[:2])
+    else:
+        year, month = datetime.now().year, datetime.now().month
+    
+    import calendar
+    cal = calendar.monthcalendar(year, month)
+    month_name = calendar.month_name[month]
+    
+    # HTML with Literal Calendar
     html_content = """
     <!DOCTYPE html>
     <html>
     <head>
         <title>Emails from {0}</title>
         <style>
-            .email-container {{ border: 1px solid #ccc; margin: 10px; padding: 10px; }}
-            .email-list {{ display: none; }}
-            .active {{ display: block; }}
+            .calendar {{
+                display: grid;
+                grid-template-columns: repeat(7, 1fr);
+                gap: 5px;
+                max-width: 600px;
+                margin: 20px auto;
+            }}
+            .day {{
+                padding: 10px;
+                text-align: center;
+                border: 1px solid #ccc;
+                cursor: default;
+            }}
+            .day.active {{
+                background-color: #90ee90; /* Light green for days with emails */
+                cursor: pointer;
+            }}
+            .day.disabled {{
+                background-color: #f0f0f0;
+                color: #ccc;
+            }}
+            .email-container {{
+                border: 1px solid #ccc;
+                margin: 10px;
+                padding: 10px;
+            }}
+            .email-list {{
+                display: none;
+            }}
+            .active {{
+                display: block;
+            }}
         </style>
         <script>
             function showEmails(date) {{
                 document.querySelectorAll('.email-list').forEach(el => el.classList.remove('active'));
-                document.getElementById('emails-' + date).classList.add('active');
+                var emailList = document.getElementById('emails-' + date);
+                if (emailList) emailList.classList.add('active');
             }}
         </script>
     </head>
     <body>
         <h1>Emails from {0}</h1>
-        <div id="calendar">
-            <h2>Select Date:</h2>
-            {1}
+        <div>
+            <h2>{1} {2} Calendar</h2>
+            <div class="calendar">
+                <div class="day">Sun</div><div class="day">Mon</div><div class="day">Tue</div><div class="day">Wed</div><div class="day">Thu</div><div class="day">Fri</div><div class="day">Sat</div>
+                {3}
+            </div>
         </div>
-        {2}
+        {4}
     </body>
     </html>
     """.format(
         sender_email,
-        ''.join(f'<button onclick="showEmails(\'{date}\')">{date}</button>' for date in sorted(emails_by_date.keys())),
+        month_name,
+        year,
+        ''.join([
+            ''.join(
+                f'<div class="day {"active" if f"{year}-{month:02d}-{day:02d}" in emails_by_date else "disabled"}" ' +
+                (f'onclick="showEmails(\'{year}-{month:02d}-{day:02d}\')"' if f"{year}-{month:02d}-{day:02d}" in emails_by_date else '') +
+                f'>{day if day != 0 else ""}</div>'
+                for day in week
+            )
+            for week in cal
+        ]),
         ''.join([
             f'<div id="emails-{date}" class="email-list">' +
             ''.join([
