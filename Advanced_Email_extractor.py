@@ -171,19 +171,23 @@ def full_extraction(emails, sender_email, folder_path, progress_queue):
     
     # Save Attachments and Prepare HTML
     emails_by_date = {}
+    year_months = set()  # To store unique year-month combinations
     for i, email in enumerate(emails, 1):
         try:
-            # Parse the date and standardize to YYYY-MM-DD
             date_obj = datetime.strptime(email['date'], '%a, %d %b %Y %H:%M:%S %z')
             date_key = date_obj.strftime('%Y-%m-%d')
+            year_month = date_obj.strftime('%Y-%m')
+            year_months.add(year_month)
         except ValueError:
-            # Fallback: Extract date from string if format is unexpected
             date_parts = email['date'].split()
             if len(date_parts) >= 4:
                 date_str = f"{date_parts[3]}-{datetime.strptime(date_parts[2], '%b').month:02d}-{int(date_parts[1]):02d}"
                 date_key = date_str
+                year_month = date_str[:7]  # YYYY-MM
+                year_months.add(year_month)
             else:
-                date_key = '1970-01-01'  # Default if parsing completely fails
+                date_key = '1970-01-01'
+                year_months.add('1970-01')
         
         if date_key not in emails_by_date:
             emails_by_date[date_key] = []
@@ -197,18 +201,24 @@ def full_extraction(emails, sender_email, folder_path, progress_queue):
         
         progress_queue.put(('progress', 50 + (i / total * 30), f"Processing attachments {i}/{total}"))
     
-    # Determine the month to display (earliest email month)
-    if emails_by_date:
-        earliest_date = min(emails_by_date.keys())  # Already in YYYY-MM-DD format
-        year, month = map(int, earliest_date.split('-')[:2])
-    else:
-        year, month = datetime.now().year, datetime.now().month
+    # Default to current month and year
+    current_year, current_month = datetime.now().year, datetime.now().month
+    default_year_month = f"{current_year}-{current_month:02d}"
+    
+    # Sort year-months and prepare dropdown options
+    year_month_list = sorted(list(year_months))
+    if not year_month_list:
+        year_month_list = [default_year_month]
+    
+    # Use the earliest year-month if emails exist, otherwise current
+    earliest_year_month = year_month_list[0] if year_month_list else default_year_month
+    initial_year, initial_month = map(int, earliest_year_month.split('-'))
     
     import calendar
-    cal = calendar.monthcalendar(year, month)
-    month_name = calendar.month_name[month]
+    cal = calendar.monthcalendar(initial_year, initial_month)
+    month_name = calendar.month_name[initial_month]
     
-    # HTML with Literal Calendar
+    # HTML with Dropdown and Dynamic Calendar
     html_content = """
     <!DOCTYPE html>
     <html>
@@ -249,38 +259,72 @@ def full_extraction(emails, sender_email, folder_path, progress_queue):
             }}
         </style>
         <script>
+            const emailsByDate = {1};
+            const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+            
+            function generateCalendar(year, month) {{
+                const firstDay = new Date(year, month - 1, 1).getDay();
+                const daysInMonth = new Date(year, month, 0).getDate();
+                let calendarHtml = '<div class="day">Sun</div><div class="day">Mon</div><div class="day">Tue</div><div class="day">Wed</div><div class="day">Thu</div><div class="day">Fri</div><div class="day">Sat</div>';
+                let day = 1;
+                
+                for (let i = 0; i < 6; i++) {{
+                    for (let j = 0; j < 7; j++) {{
+                        if ((i === 0 && j < firstDay) || day > daysInMonth) {{
+                            calendarHtml += '<div class="day"></div>';
+                        }} else {{
+                            const dateStr = `${{year}}-${{(month < 10 ? '0' : '') + month}}-${{(day < 10 ? '0' : '') + day}}`;
+                            const hasEmails = emailsByDate[dateStr] !== undefined;
+                            calendarHtml += `<div class="day ${{hasEmails ? 'active' : 'disabled'}}"${{hasEmails ? ` onclick="showEmails('${{dateStr}}')"` : ''}}>${{day}}</div>`;
+                            day++;
+                        }}
+                    }}
+                    if (day > daysInMonth) break;
+                }}
+                document.getElementById('calendar-grid').innerHTML = calendarHtml;
+                document.getElementById('calendar-title').innerText = `${{monthNames[month - 1]}} ${{year}} Calendar`;
+            }}
+            
             function showEmails(date) {{
                 document.querySelectorAll('.email-list').forEach(el => el.classList.remove('active'));
                 var emailList = document.getElementById('emails-' + date);
                 if (emailList) emailList.classList.add('active');
             }}
+            
+            function updateCalendar() {{
+                const selected = document.getElementById('year-month').value.split('-');
+                const year = parseInt(selected[0]);
+                const month = parseInt(selected[1]);
+                generateCalendar(year, month);
+            }}
+            
+            window.onload = function() {{
+                generateCalendar({2}, {3});
+            }};
         </script>
     </head>
     <body>
         <h1>Emails from {0}</h1>
         <div>
-            <h2>{1} {2} Calendar</h2>
-            <div class="calendar">
-                <div class="day">Sun</div><div class="day">Mon</div><div class="day">Tue</div><div class="day">Wed</div><div class="day">Thu</div><div class="day">Fri</div><div class="day">Sat</div>
-                {3}
+            <label for="year-month">Select Month and Year: </label>
+            <select id="year-month" onchange="updateCalendar()">
+                {4}
+            </select>
+            <h2 id="calendar-title">{5} {2} Calendar</h2>
+            <div id="calendar-grid" class="calendar">
+                <!-- Calendar will be generated here by JS -->
             </div>
         </div>
-        {4}
+        {6}
     </body>
     </html>
     """.format(
         sender_email,
+        json.dumps(emails_by_date),  # Pass emails_by_date to JS
+        initial_year,
+        initial_month,
+        ''.join(f'<option value="{ym}"{" selected" if ym == default_year_month else ""}>{calendar.month_name[int(ym.split("-")[1])]} {ym.split("-")[0]}</option>' for ym in year_month_list),
         month_name,
-        year,
-        ''.join([
-            ''.join(
-                f'<div class="day {"active" if f"{year}-{month:02d}-{day:02d}" in emails_by_date else "disabled"}" ' +
-                (f'onclick="showEmails(\'{year}-{month:02d}-{day:02d}\')"' if f"{year}-{month:02d}-{day:02d}" in emails_by_date else '') +
-                f'>{day if day != 0 else ""}</div>'
-                for day in week
-            )
-            for week in cal
-        ]),
         ''.join([
             f'<div id="emails-{date}" class="email-list">' +
             ''.join([
