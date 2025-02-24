@@ -41,4 +41,22 @@ python -m Advanced_Email_extractor
 Features
 
 Simple extractor
-- Exports the emails into 
+- Enter the sender email account
+- Exports the emails into emails_from_{sender_email}.csv
+- Also have option to export and delete
+- Export and archieve emails
+
+The file will be in the same folder as the program
+
+Advanced CLI extrator
+- does the same thing as above with more error handling capabilites, thread, logging capabilities
+
+GUI version
+- Added GUI capabilities
+
+Advanced Version
+
+- Extracts into Emails folder
+- then creates a subfolder with the format emails_from_{sender_email}
+- In the folder there are three files HTML, csv and json
+- If you open the JSON file you can find the emails from that specific sender formatted in calender
